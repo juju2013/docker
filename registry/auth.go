@@ -16,10 +16,27 @@ import (
 // Where we store the config file
 const CONFIGFILE = ".dockercfg"
 
-// Only used for user auth + account creation
-const INDEXSERVER = "https://index.docker.io/v1/"
+// get runtime indexserver
+var (
+	INDEXSERVERNAME = getIndexServerName()
+	INDEXSERVER     = getIndexServer()
+)
 
-//const INDEXSERVER = "https://indexstaging-docker.dotcloud.com/v1/"
+func getIndexServerName() (r string) {
+	r = os.Getenv("INDEXSERVERNAME")
+	if "" == r {
+		r = "vparinftpl01.edenred.net:5000"
+	}
+	return
+}
+
+func getIndexServer() (r string) {
+	r = os.Getenv("INDEXSERVER")
+	if "" == r {
+		r = fmt.Sprintf("http://%s/v1/", getIndexServerName())
+	}
+	return
+}
 
 var (
 	ErrConfigFileMissing = errors.New("The Auth config file is missing")

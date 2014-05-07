@@ -128,7 +128,7 @@ func ResolveRepositoryName(reposName string) (string, string, error) {
 	}
 	hostname := nameParts[0]
 	reposName = nameParts[1]
-	if strings.Contains(hostname, "index.docker.io") {
+	if strings.Contains(hostname, INDEXSERVERNAME) {
 		return "", "", fmt.Errorf("Invalid repository name, try \"%s\" instead", reposName)
 	}
 	if err := validateRepositoryName(reposName); err != nil {
