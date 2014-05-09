@@ -34,7 +34,7 @@ import (
 	gosignal "os/signal"
 	"path"
 	"path/filepath"
-	goruntime "runtime"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -428,11 +428,13 @@ func (srv *Server) Build(job *engine.Job) engine.Status {
 		suppressOutput = job.GetenvBool("q")
 		noCache        = job.GetenvBool("nocache")
 		rm             = job.GetenvBool("rm")
+		authConfig     = &registry.AuthConfig{}
 		configFile     = &registry.ConfigFile{}
 		tag            string
 		context        io.ReadCloser
 	)
-	job.GetenvJson("auth", configFile)
+	job.GetenvJson("authConfig", authConfig)
+	job.GetenvJson("configFile", configFile)
 	repoName, tag = utils.ParseRepositoryTag(repoName)
 
 	if remoteURL == "" {
@@ -484,7 +486,7 @@ func (srv *Server) Build(job *engine.Job) engine.Status {
 			Writer:          job.Stdout,
 			StreamFormatter: sf,
 		},
-		!suppressOutput, !noCache, rm, job.Stdout, sf, configFile)
+		!suppressOutput, !noCache, rm, job.Stdout, sf, authConfig, configFile)
 	id, err := b.Build(context)
 	if err != nil {
 		return job.Error(err)
@@ -787,7 +789,7 @@ func (srv *Server) DockerInfo(job *engine.Job) engine.Status {
 	v.SetBool("IPv4Forwarding", !srv.daemon.SystemConfig().IPv4ForwardingDisabled)
 	v.SetBool("Debug", os.Getenv("DEBUG") != "")
 	v.SetInt("NFd", utils.GetTotalUsedFds())
-	v.SetInt("NGoroutines", goruntime.NumGoroutine())
+	v.SetInt("NGoroutines", runtime.NumGoroutine())
 	v.Set("ExecutionDriver", srv.daemon.ExecutionDriver().Name())
 	v.SetInt("NEventsListener", len(srv.listeners))
 	v.Set("KernelVersion", kernelVersion)
@@ -805,9 +807,9 @@ func (srv *Server) DockerVersion(job *engine.Job) engine.Status {
 	v.Set("Version", dockerversion.VERSION)
 	v.SetJson("ApiVersion", api.APIVERSION)
 	v.Set("GitCommit", dockerversion.GITCOMMIT)
-	v.Set("GoVersion", goruntime.Version())
-	v.Set("Os", goruntime.GOOS)
-	v.Set("Arch", goruntime.GOARCH)
+	v.Set("GoVersion", runtime.Version())
+	v.Set("Os", runtime.GOOS)
+	v.Set("Arch", runtime.GOARCH)
 	if kernelVersion, err := utils.GetKernelVersion(); err == nil {
 		v.Set("KernelVersion", kernelVersion.String())
 	}
@@ -1341,22 +1343,15 @@ func (srv *Server) ImagePull(job *engine.Job) engine.Status {
 		localName   = job.Args[0]
 		tag         string
 		sf          = utils.NewStreamFormatter(job.GetenvBool("json"))
-		authConfig  registry.AuthConfig
-		configFile  = &registry.ConfigFile{}
+		authConfig  = &registry.AuthConfig{}
 		metaHeaders map[string][]string
 	)
 	if len(job.Args) > 1 {
 		tag = job.Args[1]
 	}
 
-	job.GetenvJson("auth", configFile)
+	job.GetenvJson("authConfig", authConfig)
 	job.GetenvJson("metaHeaders", metaHeaders)
-
-	endpoint, _, err := registry.ResolveRepositoryName(localName)
-	if err != nil {
-		return job.Error(err)
-	}
-	authConfig = configFile.ResolveAuthConfig(endpoint)
 
 	c, err := srv.poolAdd("pull", localName+":"+tag)
 	if err != nil {
@@ -1376,12 +1371,12 @@ func (srv *Server) ImagePull(job *engine.Job) engine.Status {
 		return job.Error(err)
 	}
 
-	endpoint, err = registry.ExpandAndVerifyRegistryUrl(hostname)
+	endpoint, err := registry.ExpandAndVerifyRegistryUrl(hostname)
 	if err != nil {
 		return job.Error(err)
 	}
 
-	r, err := registry.NewRegistry(&authConfig, registry.HTTPRequestFactory(metaHeaders), endpoint)
+	r, err := registry.NewRegistry(authConfig, registry.HTTPRequestFactory(metaHeaders), endpoint)
 	if err != nil {
 		return job.Error(err)
 	}

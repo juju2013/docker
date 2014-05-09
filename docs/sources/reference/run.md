@@ -136,12 +136,17 @@ PID files):
 
 ## Network Settings
 
-    --dns=[]     : Set custom dns servers for the container
-    --net=bridge : Set the network mode
+    --dns=[]      : Set custom dns servers for the container
+    --net="bridge": Set the Network mode for the container ('bridge': creates a new network stack for the container on the docker bridge, 'none': no networking for this container, 'container:<name|id>': reuses another container network stack), 'host': use the host network stack inside the container
+    --net="bridge"             Set the Network mode for the container
+                                 'bridge': creates a new network stack for the container on the docker bridge
+                                 'none': no networking for this container
+                                 'container:<name|id>': reuses another container network stack
+                                 'host': use the host network stack inside the contaner
 
 By default, all containers have networking enabled and they can make any
 outgoing connections. The operator can completely disable networking
-with `docker run -n` which disables all incoming and
+with `docker run --net none` which disables all incoming and
 outgoing networking. In cases like this, you would perform I/O through
 files or STDIN/STDOUT only.
 
@@ -230,7 +235,7 @@ By default, Docker containers are "unprivileged" and cannot, for
 example, run a Docker daemon inside a Docker container. This is because
 by default a container is not allowed to access any devices, but a
 "privileged" container is given access to all devices (see [lxc-template.go](
-https://github.com/dotcloud/docker/blob/master/execdriver/lxc/lxc_template.go)
+https://github.com/dotcloud/docker/blob/master/daemon/execdriver/lxc/lxc_template.go)
 and documentation on [cgroups devices](
 https://www.kernel.org/doc/Documentation/cgroups/devices.txt)).
 
@@ -245,7 +250,7 @@ If the Docker daemon was started using the `lxc` exec-driver
 (`docker -d --exec-driver=lxc`) then the operator can also specify LXC options
 using one or more `--lxc-conf` parameters. These can be new parameters or
 override existing parameters from the [lxc-template.go](
-https://github.com/dotcloud/docker/blob/master/execdriver/lxc/lxc_template.go).
+https://github.com/dotcloud/docker/blob/master/daemon/execdriver/lxc/lxc_template.go).
 Note that in the future, a given host's docker daemon may not use LXC, so this
 is an implementation-specific configuration meant for operators already
 familiar with using LXC directly.

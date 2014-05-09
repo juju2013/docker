@@ -50,6 +50,7 @@ type buildFile struct {
 	utilizeCache bool
 	rm           bool
 
+	authConfig *registry.AuthConfig
 	configFile *registry.ConfigFile
 
 	tmpContainers map[string]struct{}
@@ -80,10 +81,20 @@ func (b *buildFile) CmdFrom(name string) error {
 	if err != nil {
 		if b.daemon.Graph().IsNotExist(err) {
 			remote, tag := utils.ParseRepositoryTag(name)
+			pullRegistryAuth := b.authConfig
+			if len(b.configFile.Configs) > 0 {
+				// The request came with a full auth config file, we prefer to use that
+				endpoint, _, err := registry.ResolveRepositoryName(remote)
+				if err != nil {
+					return err
+				}
+				resolvedAuth := b.configFile.ResolveAuthConfig(endpoint)
+				pullRegistryAuth = &resolvedAuth
+			}
 			job := b.srv.Eng.Job("pull", remote, tag)
 			job.SetenvBool("json", b.sf.Json())
 			job.SetenvBool("parallel", true)
-			job.SetenvJson("auth", b.configFile)
+			job.SetenvJson("authConfig", pullRegistryAuth)
 			job.Stdout.Add(b.outOld)
 			if err := job.Run(); err != nil {
 				return err
@@ -386,9 +397,10 @@ func (b *buildFile) checkPathForAddition(orig string) error {
 
 func (b *buildFile) addContext(container *daemon.Container, orig, dest string, remote bool) error {
 	var (
-		err      error
-		origPath = path.Join(b.contextPath, orig)
-		destPath = path.Join(container.RootfsPath(), dest)
+		err        error
+		destExists = true
+		origPath   = path.Join(b.contextPath, orig)
+		destPath   = path.Join(container.RootfsPath(), dest)
 	)
 
 	if destPath != container.RootfsPath() {
@@ -401,6 +413,14 @@ func (b *buildFile) addContext(container *daemon.Container, orig, dest string, r
 	// Preserve the trailing '/'
 	if strings.HasSuffix(dest, "/") {
 		destPath = destPath + "/"
+	}
+	destStat, err := os.Stat(destPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			destExists = false
+		} else {
+			return err
+		}
 	}
 	fi, err := os.Stat(origPath)
 	if err != nil {
@@ -423,8 +443,20 @@ func (b *buildFile) addContext(container *daemon.Container, orig, dest string, r
 		if err := archive.CopyWithTar(origPath, destPath); err != nil {
 			return err
 		}
-		if err := chownR(destPath, 0, 0); err != nil {
-			return err
+		if destExists {
+			files, err := ioutil.ReadDir(origPath)
+			if err != nil {
+				return err
+			}
+			for _, file := range files {
+				if err := chownR(filepath.Join(destPath, file.Name()), 0, 0); err != nil {
+					return err
+				}
+			}
+		} else {
+			if err := chownR(destPath, 0, 0); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
@@ -456,7 +488,12 @@ func (b *buildFile) addContext(container *daemon.Container, orig, dest string, r
 		return err
 	}
 
-	if err := chownR(destPath, 0, 0); err != nil {
+	resPath := destPath
+	if destExists && destStat.IsDir() {
+		resPath = path.Join(destPath, path.Base(origPath))
+	}
+
+	if err := chownR(resPath, 0, 0); err != nil {
 		return err
 	}
 	return nil
@@ -821,7 +858,7 @@ func stripComments(raw []byte) string {
 	return strings.Join(out, "\n")
 }
 
-func NewBuildFile(srv *Server, outStream, errStream io.Writer, verbose, utilizeCache, rm bool, outOld io.Writer, sf *utils.StreamFormatter, configFile *registry.ConfigFile) BuildFile {
+func NewBuildFile(srv *Server, outStream, errStream io.Writer, verbose, utilizeCache, rm bool, outOld io.Writer, sf *utils.StreamFormatter, auth *registry.AuthConfig, authConfigFile *registry.ConfigFile) BuildFile {
 	return &buildFile{
 		daemon:        srv.daemon,
 		srv:           srv,
@@ -834,7 +871,8 @@ func NewBuildFile(srv *Server, outStream, errStream io.Writer, verbose, utilizeC
 		utilizeCache:  utilizeCache,
 		rm:            rm,
 		sf:            sf,
-		configFile:    configFile,
+		authConfig:    auth,
+		configFile:    authConfigFile,
 		outOld:        outOld,
 	}
 }
