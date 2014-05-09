@@ -25,7 +25,7 @@ var (
 func getIndexServerName() (r string) {
 	r = os.Getenv("INDEXSERVERNAME")
 	if "" == r {
-		r = "vparinftpl01.edenred.net:5000"
+		r = "private.registery.host:port"
 	}
 	return
 }
